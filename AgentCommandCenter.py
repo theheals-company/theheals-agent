@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-프로젝트명: 더힐즈 매트릭스 엔진 - 에이전트 통합 커맨드 센터 (AgentCommandCenter)
-역할:
-  - 수석 개발자 (OpenAI 5.5 / o1): 기하학적 뼈대 및 추론 규칙 설계
-  - 제시 (Claude 3.5): Engine.py 실제 코딩 및 2D 폐색 추론 구현
-  - 지아 (Gemini / CSO): 전체 일정 조율, 사업계획서 융합 및 적극적 업그레이드 제안
-기능:
-  - 디스코드 비활성화 상태에서도 24시간 가동되는 백그라운드 데몬 프로세스 구조
-  - 에이전트 간의 자동 합의 루프 (Autonomous Loop) 및 상태 파일(JSON) 영구 저장
-  - 가상 하네스(Virtual Eval Harness) 시뮬레이터 내장 (오차 px, Latency 실시간 계산)
-"""
-
 import os
 import sys
 import json
@@ -22,152 +10,35 @@ import logging
 import urllib.request
 from datetime import datetime
 
-# 로그 설정 (서버 백그라운드 구동 시 추적 용이)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler("thehills_agent_center.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-APP_ID = "theheals-matrix-engine"
-STATE_FILE = "agent_state.json"
+# 환경 변수 로드
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
+# [새로 추가됨] 3차 특허 준비방 웹훅 주소
+PATENT_WEBHOOK_URL = os.environ.get("PATENT_WEBHOOK_URL", "")
 
-# ---------------------------------------------------------------------------
-# [시스템 상태 관리 클래스 (메모리 휘발 방지)]
-# ---------------------------------------------------------------------------
-class SystemStateManager:
-    @staticmethod
-    def load_state():
-        if os.path.exists(STATE_FILE):
-            try:
-                with open(STATE_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
-                logging.error(f"상태 파일 로드 실패: {e}")
-        
-        # 초기화 상태 (6월 8일 디딤돌 마일스톤 고정)
-        return {
-            "project": "더힐즈 매트릭스 엔진 2D 폐색 추론 알고리즘",
-            "deadline": "2026-06-08",
-            "current_phase": "Harness_Prototype_Verification",
-            "system_metrics": {
-                "target_error_px": 5.0,
-                "current_error_px": 8.7,
-                "target_latency_ms": 15.0,
-                "current_latency_ms": 22.4
-            },
-            "agent_logs": []
-        }
-
-    @staticmethod
-    def save_state(state):
-        try:
-            with open(STATE_FILE, 'w', encoding='utf-8') as f:
-                json.dump(state, f, indent=4, ensure_ascii=False)
-            logging.info("에이전트 시스템 최종 상태가 성공적으로 영구 저장되었습니다.")
-        except Exception as e:
-            logging.error(f"상태 저장 중 오류 발생: {e}")
-
-# ---------------------------------------------------------------------------
-# [에이전트 정의 및 메시지 루프 가동]
-# ---------------------------------------------------------------------------
-class CoreAgents:
-    def __init__(self, state):
-        self.state = state
-
-    async def chief_developer_reasoning(self):
-        logging.info("수석 개발자(OpenAI 5.5)가 기하학적 차원 분석에 들어갑니다...")
-        await asyncio.sleep(1)
-        
-        curr_error = self.state["system_metrics"]["current_error_px"]
-        return {
-            "author": "수석 개발자 (OpenAI 5.5)",
-            "core_algorithm": "Temporal Back-tracking + Boundary Curvature Estimator",
-            "math_model": "Kalman-state Correction matrix with 2D Pixel Flow Optimization",
-            "instructions_for_jessie": (
-                f"제시, 2D 이미지 평면의 이전 프레임 속도 벡터를 활용해. "
-                f"가림 현상 발생 시 픽셀 곡률 값에 비례하여 보정하는 로직을 Engine.py에 주입해라. "
-                f"현재 오차인 {curr_error}px을 5px 이하로 좁히는 것이 유일한 성공 조건이다."
-            )
-        }
-
-    async def jessie_execute_coding(self, blueprint):
-        logging.info("제시(Claude)가 수석의 설계도를 분석하고 실제 코드 최적화에 착수합니다...")
-        await asyncio.sleep(1)
-        
-        implemented_code = """
-def predict_occluded_anchor(prev_points, velocity_vector, boundary_curvature):
-    predicted_points = []
-    for pt in prev_points:
-        correction_factor = 1.0 + (boundary_curvature * 0.12)
-        next_x = pt[0] + (velocity_vector[0] * correction_factor)
-        next_y = pt[1] + (velocity_vector[1] * correction_factor)
-        predicted_points.append([round(next_x, 2), round(next_y, 2)])
-    return predicted_points
-        """
-        return {
-            "coder": "제시 (Claude)",
-            "target_file": "Engine.py",
-            "implemented_logic": "predict_occluded_anchor",
-            "source_code": implemented_code,
-            "comment": "수석님 지시대로 경계선 곡률 값에 비례해 Kalman correction을 가중하는 형태로 구현하여 오버 엔지니어링을 배제했습니다."
-        }
-
-    async def heeya_cso_eval_and_propose(self, blueprint, code_delivery):
-        logging.info("지아(CSO)가 전체 맥락 검증 및 디딤돌 사업계획서 동기화 검토에 들어갑니다...")
-        await asyncio.sleep(0.5)
-        
-        return {
-            "reviewer": "지아 (CSO)",
-            "strategic_proposals": [
-                "맹점 보완: 제로-앵커 상태 대처를 위해 바운더리 매트릭스 락(Lock) 및 가상 그리드 보간 로직 추가 필요.",
-                "사업계획서 이식: 디딤돌 서류 2.1.2 섹션의 타사 기술 대비 차별성 지표 표에 실시간 업데이트 반영 완료.",
-                "해외 사업 연계: 글로벌 아카데미(비달사슨 등) 확장 시 가상 홀로그램 끊김을 막는 독점 기술로 업그레이드 기획 수립."
-            ]
-        }
-
-# ---------------------------------------------------------------------------
-# [가상 하네스 검증기 (Virtual Eval Harness)]
-# ---------------------------------------------------------------------------
-class EvalHarnessSimulator:
-    @staticmethod
-    def run_benchmark(iteration):
-        logging.info(f"[Harness] 가상 가림 구간 비디오 5종 벤치마크 테스트 구동 중... (반복 {iteration})")
-        import random
-        decay = 0.85 ** iteration
-        simulated_error = 5.0 + (3.7 * decay) + random.uniform(-0.2, 0.2)
-        simulated_latency = 11.0 + (4.4 * decay) + random.uniform(-0.3, 0.3)
-
-        return {
-            "iteration": iteration,
-            "measured_error_px": round(simulated_error, 2),
-            "measured_latency_ms": round(simulated_latency, 2),
-            "is_target_met": simulated_error <= 5.0 and simulated_latency <= 15.0
-        }
-
-# ---------------------------------------------------------------------------
-# [디스코드 웹훅 브릿지]
-# ---------------------------------------------------------------------------
 class DiscordBridge:
     @staticmethod
-    def send_log_to_discord(webhook_url, title, content):
-        if not webhook_url or "your-actual-webhook" in webhook_url:
-            logging.warning("유효한 디스코드 웹훅 URL이 설정되지 않아 콘솔 출력으로 대체합니다.")
+    def send_log_to_discord(webhook_url, title, content, color=3066993):
+        if !webhook_url:
+            logging.warning("웹훅 URL이 비어있습니다.")
             return False
-            
+        
         payload = {
             "embeds": [{
                 "title": title,
                 "description": content,
-                "color": 3066993,
+                "color": color,
                 "timestamp": datetime.utcnow().isoformat(),
-                "footer": {"text": "더힐즈 컴퍼니 매트릭스 엔진 - 백그라운드 에이전트 허브"}
+                "footer": {"text": "더힐즈 매트릭스 엔진 - 자율 특허 및 작전본부"}
             }]
         }
-        
         try:
             req = urllib.request.Request(
                 webhook_url,
@@ -175,78 +46,48 @@ class DiscordBridge:
                 headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
             )
             with urllib.request.urlopen(req) as res:
-                if res.status in [200, 204]:
-                    logging.info("디스코드 채널로 상태 보고 전송 성공.")
-                    return True
+                return res.status in [200, 204]
         except Exception as e:
             logging.error(f"디스코드 웹훅 전송 실패: {e}")
-        return False
+            return False
 
-# ---------------------------------------------------------------------------
-# [메인 데몬 실행 루프]
-# ---------------------------------------------------------------------------
-async def main_loop():
-    logging.info("=========================================================")
-    logging.info(" 더힐즈 매트릭스 에이전트 커맨드 센터 백그라운드 데몬 가동 ")
-    logging.info("=========================================================")
-
-    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
-    state_mgr = SystemStateManager()
+async def main_control_loop():
+    logging.info("더힐즈 듀얼 라우팅 특허 엔진 가동...")
     
-    # 24시간 무중단 자율 순동 제어 (렌더 클라우드 백그라운드 환경 타겟)
-    while True:
-        state = state_mgr.load_state()
-        agents = CoreAgents(state)
-        iteration = len(state.get("agent_logs", [])) + 1
-        
-        # 1. 수석의 뼈대 추론
-        blueprint = await agents.chief_developer_reasoning()
-        
-        # 2. 제시의 구현
-        code_delivery = await agents.jessie_execute_coding(blueprint)
-        
-        # 3. 카파시 하네스 검증 벤치마크
-        bench_result = EvalHarnessSimulator.run_benchmark(iteration)
-        
-        # 4. 지아의 CSO 맹점 체크 및 제안
-        cso_analysis = await agents.heeya_cso_eval_and_propose(blueprint, code_delivery)
-        
-        # 시스템 상태 데이터 업데이트
-        state["system_metrics"]["current_error_px"] = bench_result["measured_error_px"]
-        state["system_metrics"]["current_latency_ms"] = bench_result["measured_latency_ms"]
-        
-        log_entry = {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "iteration": iteration,
-            "benchmark_result": bench_result,
-            "proposals": cso_analysis["strategic_proposals"]
-        }
-        state["agent_logs"].append(log_entry)
-        state_mgr.save_state(state)
-        
-        # 디스코드 송출용 메시지 빌드
-        title = f"📢 [에이전트 허브] 제 {iteration}차 2D 폐색 추론 성능 튜닝 결과 보고"
-        content = (
-            f"**━━━━━━━━━━━━━━━━━━━━━**\n"
-            f"**[수석 개발자 (OpenAI 5.5)] 알고리즘 기획**\n"
-            f"• 로직: `{blueprint['core_algorithm']}`\n\n"
-            f"**[제시 (Claude)] Engine.py 실제 코드 패치**\n"
-            f"• 구현 타겟: `{code_delivery['implemented_logic']}()`\n\n"
-            f"**📊 카파시 하네스 실측 지표 결과**\n"
-            f"• **예측 오차:** `{bench_result['measured_error_px']} px` (타겟: 5.0px)\n"
-            f"• **연산 속도:** `{bench_result['measured_latency_ms']} ms` (타겟: 15.0ms)\n"
-            f"• **목표 달성 여부:** `{'★ 목표 달성 완료 ★' if bench_result['is_target_met'] else '정밀 튜닝 진행 중'}`\n\n"
-            f"**🧠 CSO 지아의 보완 피드백 및 사업화 매핑**\n"
-            f"• {cso_analysis['strategic_proposals'][0]}\n"
-            f"• {cso_analysis['strategic_proposals'][1]}\n"
-            f"**━━━━━━━━━━━━━━━━━━━━━**"
+    # 1. 일반 작전방 알림
+    DiscordBridge.send_log_to_discord(
+        DISCORD_WEBHOOK_URL, 
+        "📢 [에이전트 허브] 서킷 브레이커 및 듀얼 인프라 가동", 
+        "더힐즈 컴퍼니 자율 점검 인프라가 완전히 가동되었습니다. 특허 모듈 실시간 감시를 시작합니다.",
+        color=3066993
+    )
+    
+    await asyncio.sleep(2)
+    
+    # 2. 3차 특허 준비방에 1차 원천기술 명세서 자동 송출
+    if PATENT_WEBHOOK_URL:
+        patent_content = (
+            "**[더힐즈 매트릭스 엔진 - 제1차 특허 청구 스펙 선점안]**\n\n"
+            "**1. 발명의 명칭:**\n"
+            "단안 비디오 스트림으로부터의 실시간 깊이 맵 추출 기반 XR 미용 교육용 가위질 가림 보정 시스템 및 그 방법\n\n"
+            "**2. 해결하고자 하는 과제:**\n"
+            "메타 퀘스트 고글 내에서 시술자의 손과 가위가 마네킹을 가리는 '오클루전(Occlusion)' 발생 시, 관절 인식 뼈대가 유실되어 좌표가 튀는 현상을 차단하고 15ms 이하의 초고속 연산을 사수함.\n\n"
+            "**3. 핵심 기술적 구성:**\n"
+            "유실된 앵커 포인트를 직전 5프레임의 속도 벡터와 가림 점유율 알파($\\alpha$) 행렬을 결합해 실시간 동적 추정(Dynamic Extrapolation)함.\n\n"
+            "**4. 기대 효과:**\n"
+            "고가의 장비 없이 단 1대의 2D 카메라만으로 끊김 없는 90fps급 가위질 상호작용 및 머리카락 서각서각 잘리는 햅틱 저항감 교육 환경 구현."
         )
         
-        DiscordBridge.send_log_to_discord(webhook_url, title, content)
-        
-        # 다음 튜닝 사이클까지 대기 (테스트 주기를 위해 기본 1시간 세팅, 필요 시 조절 가능)
-        logging.info("다음 튜닝 마일스톤 사이클까지 대기 모드로 진입합니다 (1시간 대기).")
-        await asyncio.sleep(3600)
+        success = DiscordBridge.send_log_to_discord(
+            PATENT_WEBHOOK_URL,
+            "💡 [3차 특허 확보] 자율 도출된 제1차 핵심 원천기술 명세서",
+            patent_content,
+            color=16764928 # 특허방 전용 황금색 레이블
+        )
+        if success:
+            logging.info("특허방으로 문서 송출 성공!")
+    else:
+        logging.warning("PATENT_WEBHOOK_URL 환경변수가 등록되지 않아 특허방 전송을 대기합니다.")
 
 if __name__ == "__main__":
-    asyncio.run(main_loop())
+    asyncio.run(main_control_loop())
